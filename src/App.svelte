@@ -1,47 +1,47 @@
 <script lang="ts">
-  import svelteLogo from './assets/svelte.svg'
-  import viteLogo from '/vite.svg'
-  import Counter from './lib/Counter.svelte'
+
+
+  import { onDestroy } from "svelte";
+  
+  const startDate = new Date("2012-12-01T00:00:00Z");
+  let elapsedTime = Date.now() - startDate.getTime();
+
+  const interval = setInterval(() => {
+    elapsedTime = Date.now() - startDate.getTime();
+  }, 1000);
+
+  
+  onDestroy(() => clearInterval(interval));
+
+  function formatElapsedTime(ms: number) {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    const months = Math.floor(days / 30.44); // Approximation des mois
+    const years = Math.floor(months / 12);
+
+    return {
+      years,
+      months: months % 12,
+      days: days % 30.44 | 0,
+      hours: String(hours % 24).padStart(2, "0"),
+      minutes: String(minutes % 60).padStart(2, "0"),
+      seconds: String(seconds % 60).padStart(2, "0")
+    };
+  }
+
 </script>
 
 <main>
-  <div>
-    <a href="https://vite.dev" target="_blank" rel="noreferrer">
-      <img src={viteLogo} class="logo" alt="Vite Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank" rel="noreferrer">
-      <img src={svelteLogo} class="logo svelte" alt="Svelte Logo" />
-    </a>
-  </div>
-  <h1>Vite + Svelte</h1>
+  <p>Foreground Eclipse last album was released </p>
+  {#await Promise.resolve(formatElapsedTime(elapsedTime)) then time}
+    <h1>{time.years} Years, {time.months} Months, {time.days} Days,
+    {time.hours}:{time.minutes}:{time.seconds} ago</h1>
+  {/await}
 
-  <div class="card">
-    <Counter />
-  </div>
-
-  <p>
-    Check out <a href="https://github.com/sveltejs/kit#readme" target="_blank" rel="noreferrer">SvelteKit</a>, the official Svelte app framework powered by Vite!
-  </p>
-
-  <p class="read-the-docs">
-    Click on the Vite and Svelte logos to learn more
-  </p>
 </main>
 
 <style>
-  .logo {
-    height: 6em;
-    padding: 1.5em;
-    will-change: filter;
-    transition: filter 300ms;
-  }
-  .logo:hover {
-    filter: drop-shadow(0 0 2em #646cffaa);
-  }
-  .logo.svelte:hover {
-    filter: drop-shadow(0 0 2em #ff3e00aa);
-  }
-  .read-the-docs {
-    color: #888;
-  }
+
 </style>
