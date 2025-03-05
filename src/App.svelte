@@ -2,7 +2,38 @@
 
 
   import { onDestroy } from "svelte";
-  
+  import { onMount } from "svelte";
+
+
+  //Everything related to the audio stream
+  let audio: HTMLAudioElement;
+  let track = "";
+  let startTime = 0;
+
+  onMount(() => {
+    const ws = new WebSocket("ws://localhost:5173/api/stream");
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      track = data.track;
+      startTime = data.startTime;
+
+      if (!audio) {
+        audio = new Audio(track);
+        audio.play();
+      } else if (audio.src !== track) {
+        audio.src = track;
+        audio.play();
+      }
+
+      // Synchroniser l'avancement de la lecture
+      const offset = (Date.now() - startTime) / 1000;
+      audio.currentTime = offset;
+    };
+  });
+
+
+  //Everything related to the elapsed time
   const startDate = new Date("2012-12-01T00:00:00Z");
   let elapsedTime = Date.now() - startDate.getTime();
 
