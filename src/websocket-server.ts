@@ -12,54 +12,70 @@ interface Track {
 
 let currentTrack: Track | null = null;
 let startTime = Date.now();
+let playedTracks: Set<string> = new Set();
+let allTracks: Track[] = [];
 
-// Fonction pour obtenir un chemin de fichier aléatoire
-async function getRandomTrack(): Promise<Track> {
+// Fonction pour charger toutes les pistes disponibles
+async function loadAllTracks(): Promise<Track[]> {
+    const tracks: Track[] = [];
+    const albumsPath = join(process.cwd(), 'public', 'music');
+    
     try {
-        // Lister tous les albums
-        const albumsPath = join(process.cwd(), 'public', 'music');
         const albums = readdirSync(albumsPath, { withFileTypes: true })
             .filter(dirent => dirent.isDirectory())
             .map(dirent => dirent.name);
 
-        if (albums.length === 0) {
-            const defaultPath = "music/album1/Storytellers.mp3";
-            const duration = await getAudioDurationInSeconds(join(process.cwd(), 'public', defaultPath));
-            return { path: defaultPath, duration };
+        for (const album of albums) {
+            const songsPath = join(albumsPath, album);
+            const songs = readdirSync(songsPath)
+                .filter(file => file.endsWith('.mp3'));
+            
+            for (const song of songs) {
+                const trackPath = `music/${album}/${song}`;
+                const duration = await getAudioDurationInSeconds(join(process.cwd(), 'public', trackPath));
+                tracks.push({ path: trackPath, duration });
+            }
         }
-
-        // Choisir un album au hasard
-        const randomAlbum = albums[Math.floor(Math.random() * albums.length)];
-        
-        // Lister toutes les chansons de l'album
-        const songsPath = join(albumsPath, randomAlbum);
-        const songs = readdirSync(songsPath)
-            .filter(file => file.endsWith('.mp3'));
-
-        if (songs.length === 0) {
-            const defaultPath = "music/album1/chanson1.mp3";
-            const duration = await getAudioDurationInSeconds(join(process.cwd(), 'public', defaultPath));
-            return { path: defaultPath, duration };
-        }
-
-        // Choisir une chanson au hasard
-        const randomSong = songs[Math.floor(Math.random() * songs.length)];
-        const trackPath = `music/${randomAlbum}/${randomSong}`;
-        const duration = await getAudioDurationInSeconds(join(process.cwd(), 'public', trackPath));
-        
-        return { path: trackPath, duration };
     } catch (error) {
-        console.error('Error getting random track:', error);
-        const defaultPath = "music/album1/chanson1.mp3";
-        const duration = await getAudioDurationInSeconds(join(process.cwd(), 'public', defaultPath));
-        return { path: defaultPath, duration };
+        console.error('Error loading tracks:', error);
     }
+
+    return tracks;
+}
+
+// Fonction pour obtenir une piste aléatoire non jouée
+async function getRandomTrack(): Promise<Track> {
+    // Si toutes les pistes ont été jouées, réinitialiser la liste
+    if (playedTracks.size >= allTracks.length) {
+        console.log('All tracks have been played, resetting playlist');
+        playedTracks.clear();
+        // Ne pas effacer la piste actuelle de playedTracks pour éviter de la rejouer immédiatement
+        if (currentTrack) {
+            playedTracks.add(currentTrack.path);
+        }
+    }
+
+    // Filtrer les pistes non jouées
+    const availableTracks = allTracks.filter(track => !playedTracks.has(track.path));
+    
+    if (availableTracks.length === 0) {
+        // Cela ne devrait jamais arriver grâce à la vérification précédente
+        console.error('No available tracks found');
+        return allTracks[0];
+    }
+
+    // Choisir une piste aléatoire parmi les disponibles
+    const randomTrack = availableTracks[Math.floor(Math.random() * availableTracks.length)];
+    playedTracks.add(randomTrack.path);
+    
+    return randomTrack;
 }
 
 async function changeTrack() {
     currentTrack = await getRandomTrack();
     startTime = Date.now();
     console.log('Changing to track:', currentTrack.path, 'Duration:', currentTrack.duration);
+    console.log('Played tracks:', playedTracks.size, '/', allTracks.length);
     
     broadcastState();
 }
@@ -93,8 +109,13 @@ function broadcastState() {
     });
 }
 
-// Initialiser la première piste
-getRandomTrack().then(track => {
+// Charger toutes les pistes au démarrage
+loadAllTracks().then(tracks => {
+    allTracks = tracks;
+    console.log(`Loaded ${tracks.length} tracks`);
+    // Initialiser la première piste
+    return getRandomTrack();
+}).then(track => {
     currentTrack = track;
     broadcastState();
 });

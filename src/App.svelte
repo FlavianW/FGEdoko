@@ -57,6 +57,10 @@
   }
 
   function nextTrack() {
+    if (audio) {
+      audio.pause(); // Arrêter la lecture en cours
+      isPlaying = false;
+    }
     ws.send(JSON.stringify({ type: 'trackEnded' }));
   }
 
@@ -105,15 +109,23 @@
               console.log("Creating new Audio instance");
               audio = new Audio(track);
               setupAudioListeners();
+              audio.currentTime = currentOffset;
+              audio.play()
+                .then(() => {
+                  console.log("Audio started playing");
+                  isPlaying = true;
+                })
+                .catch(e => console.error("Error playing audio:", e));
             } else if (newTrack) {
               console.log("Changing audio source");
               audio.src = track;
-              if (isPlaying) {
-                audio.currentTime = currentOffset;
-                audio.play()
-                  .then(() => console.log("Audio started playing"))
-                  .catch(e => console.error("Error playing audio:", e));
-              }
+              audio.currentTime = currentOffset;
+              audio.play()
+                .then(() => {
+                  console.log("Audio started playing");
+                  isPlaying = true;
+                })
+                .catch(e => console.error("Error playing audio:", e));
             }
           } catch (error) {
             console.error("Error handling audio:", error);
@@ -145,14 +157,14 @@
       // Ne déclencher le changement que si on est proche de la fin de la piste
       if (currentOffset >= trackDuration - 1) {
         console.log("Track ended naturally, requesting next track");
-        ws.send(JSON.stringify({ type: 'trackEnded' }));
+        nextTrack();
       }
     };
 
   }
 
   //Everything related to the elapsed time
-  const startDate = new Date("2012-12-01T00:00:00Z");
+  const startDate = new Date("2013-12-30T00:00:00Z");
   let elapsedTime = Date.now() - startDate.getTime();
 
   const interval = setInterval(() => {
