@@ -15,7 +15,7 @@
   let currentTrackName = "";
   let trackDuration = 0;
   let progress = 0;
-  let volume = 1; // Valeur par défaut (100%)
+  let volume = 0.25; // Valeur par défaut (25%)
 
   // Mettre à jour l'offset en continu
   let offsetInterval: ReturnType<typeof setInterval>;
@@ -24,6 +24,8 @@
   let albumName = 'Album inconnu';
 
   let isMuted = false;
+
+  let connectedClients = 0;
 
   function updateOffset() {
     if (startTime > 0) {
@@ -64,8 +66,8 @@
 
   function nextTrack() {
     if (audio) {
-      audio.pause(); // Arrêter la lecture en cours
-      isPlaying = false;
+      // On ne met plus en pause l'audio
+      isPlaying = true; // On garde l'état de lecture
     }
     ws.send(JSON.stringify({ type: 'trackEnded' }));
   }
@@ -73,7 +75,7 @@
   function getTrackName(path: string): string {
     const parts = path.split('/');
     const filename = parts[parts.length - 1];
-    return filename.replace('.mp3', '');
+    return filename.replace('.mp3', '').replace('.flac', '');
   }
 
   function setupAudioListeners() {
@@ -93,6 +95,7 @@
     if (audio) {
       audio.volume = volume;
     }
+    document.documentElement.style.setProperty('--volume', String(volume * 100));
   }
 
   function toggleMute() {
@@ -117,6 +120,9 @@
     // Démarrer la mise à jour de l'offset
     offsetInterval = setInterval(updateOffset, 100);
 
+    // Initialiser la variable CSS pour le volume
+    document.documentElement.style.setProperty('--volume', String(volume * 100));
+
     ws.onopen = () => {
       console.log("Connected to WebSocket server");
     };
@@ -140,10 +146,11 @@
           const newTrack = fullTrackPath !== track;
           track = fullTrackPath;
           currentTrackName = getTrackName(message.data.track);
-          getAlbumInfo(message.data.track); // Mettre à jour les infos de l'album
+          getAlbumInfo(message.data.track);
           startTime = message.data.startTime;
           trackDuration = message.data.duration;
           currentOffset = (Date.now() - startTime) / 1000;
+          connectedClients = message.data.connectedClients;
 
           try {
             if (!audio) {
@@ -151,6 +158,11 @@
               audio = new Audio(track);
               setupAudioListeners();
               audio.currentTime = currentOffset;
+              if (isPlaying) {
+                audio.play()
+                  .then(() => console.log("Audio started playing"))
+                  .catch(e => console.error("Error playing audio:", e));
+              }
             } else if (newTrack) {
               console.log("Changing audio source");
               audio.src = track;
@@ -219,6 +231,28 @@
 </script>
 
 <main>
+  <div class="connected-clients">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+      <circle cx="9" cy="7" r="4"></circle>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+    </svg>
+    <span>{connectedClients} {connectedClients > 1 ? 'listeners' : 'listener'}</span>
+  </div>
+
+  <div class="volume-control">
+    <input 
+      type="range" 
+      min="0" 
+      max="1" 
+      step="0.01" 
+      bind:value={volume} 
+      on:input={() => setVolume(volume)}
+      class="volume-slider"
+    />
+  </div>
+
   <p>Foreground Eclipse last album was released </p>
   {#await Promise.resolve(formatElapsedTime(elapsedTime)) then time}
     <h1>{time.years} Years, {time.months} Months, {time.days} Days,
@@ -237,7 +271,7 @@
     <div class="center-controls">
       <div class="buttons">
         <button on:click={togglePlay}>
-          {isPlaying ? 'Pause' : 'Play'}
+          {isPlaying ? 'Pause' : 'Launch The Foreground Eclipse Radio'}
         </button>
       </div>
     </div>
@@ -249,23 +283,6 @@
     </div>
   </div>
 
-  <button class="mute-button" on:click={toggleMute}>
-    {#if isMuted}
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="1" y1="1" x2="23" y2="23"></line>
-        <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
-        <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
-        <line x1="12" y1="19" x2="12" y2="23"></line>
-        <line x1="8" y1="23" x2="16" y2="23"></line>
-      </svg>
-    {:else}
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-      </svg>
-    {/if}
-  </button>
 </main>
 
 <style>
@@ -283,7 +300,9 @@
     height: 300px;
     border-radius: 8px;
     object-fit: cover;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    position: relative;
+    z-index: 1;
   }
 
   .track-info-large {
@@ -336,35 +355,23 @@
     background-color: rgb(227,211,196);
   }
 
-  .mute-button {
-    position: fixed;
-    bottom: 20px;
-    left: 20px;
-    background-color: transparent;
-    box-shadow: none;
-  }
-
-  .mute-button svg {
-    width: 24px;
-    height: 24px;
-    stroke: #c4d4e3;
-  }
 
   .progress-bar-bottom {
     position: fixed;
     left: 0;
     bottom: 0;
     width: 100vw;
-    padding: 12px 0 6px 0;
-    z-index: 10;
+    padding: 20px 0 0 0;
+    z-index: 100;
+    background: linear-gradient(to top, rgba(28, 44, 59, 1), rgba(28, 44, 59, 0.8));
   }
 
   .progress-bar {
     position: relative;
     width: 100%;
-    height: 8px;
+    height: 12px;
     background-color: rgba(238, 242, 247, 0.2);
-    border-radius: 4px;
+    border-radius: 6px;
     margin: 0 auto 5px auto;
   }
 
@@ -374,7 +381,7 @@
     top: 0;
     height: 100%;
     background-color: rgb(227,211,196);
-    border-radius: 4px;
+    border-radius: 6px;
     transition: width 0.1s linear;
   }
 
@@ -385,9 +392,101 @@
     left: 0;
     width: 100%;
     height: 100%;
-    -webkit-box-shadow: 0px 0px 20px 15px rgba(227, 211, 196, 0.3);
-    -moz-box-shadow: 0px 0px 20px 15px rgba(227, 211, 196, 0.3);
-    box-shadow: 0px 0px 20px 15px rgba(227, 211, 196, 0.3);
     pointer-events: none;
   }
+
+  .connected-clients {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background-color: rgba(28, 44, 59, 0.8);
+    border-radius: 20px;
+    color: rgb(242,233,226);
+    font-size: 0.9em;
+  }
+
+  .connected-clients svg {
+    width: 16px;
+    height: 16px;
+    stroke: rgb(242,233,226);
+  }
+
+  .volume-control {
+    position: fixed;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    z-index: 100;
+  }
+
+  .volume-slider {
+    -webkit-appearance: none;
+    width: 500px;
+    height: 6px;
+    background: rgba(238, 242, 247, 0.2);
+    border-radius: 3px;
+    transform: rotate(-90deg) translateX(250px);
+    transform-origin: right;
+    position: relative;
+    margin: 0;
+    padding: 0;
+  }
+
+  .volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: rgb(242,233,226);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-top: -7px;
+  }
+
+  .volume-slider::-webkit-slider-thumb:hover {
+    background: rgb(227,211,196);
+  }
+
+  .volume-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: rgb(242,233,226);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+    border: none;
+  }
+
+  .volume-slider::-moz-range-thumb:hover {
+    background: rgb(227,211,196);
+  }
+
+  .volume-slider::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 6px;
+    cursor: pointer;
+    background: linear-gradient(to right, rgb(242,233,226) 0%, rgb(242,233,226) calc(var(--volume, 0) * 1%), rgba(238, 242, 247, 0.2) calc(var(--volume, 0) * 1%));
+    border-radius: 3px;
+    margin: 0;
+    padding: 0;
+  }
+
+  .volume-slider::-moz-range-track {
+    width: 100%;
+    height: 6px;
+    cursor: pointer;
+    background: linear-gradient(to right, rgb(242,233,226) 0%, rgb(242,233,226) calc(var(--volume, 0) * 1%), rgba(238, 242, 247, 0.2) calc(var(--volume, 0) * 1%));
+    border-radius: 3px;
+    margin: 0;
+    padding: 0;
+  }
+
 </style>

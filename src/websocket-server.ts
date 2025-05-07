@@ -28,7 +28,7 @@ async function loadAllTracks(): Promise<Track[]> {
         for (const album of albums) {
             const songsPath = join(albumsPath, album);
             const songs = readdirSync(songsPath)
-                .filter(file => file.endsWith('.mp3'));
+                .filter(file => file.endsWith('.mp3') || file.endsWith('.flac'));
             
             for (const song of songs) {
                 const trackPath = `music/${album}/${song}`;
@@ -102,7 +102,8 @@ function broadcastState() {
                 data: {
                     track: currentTrack.path,
                     startTime,
-                    duration: currentTrack.duration
+                    duration: currentTrack.duration,
+                    connectedClients: wss.clients.size
                 }
             }));
         }
